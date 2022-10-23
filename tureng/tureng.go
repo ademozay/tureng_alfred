@@ -24,6 +24,7 @@ type SearchResponse struct {
 			Term     string `json:"Term"`
 			Type     string `json:"TypeEN"`
 		} `json:"Results"`
+		VoiceURLs []string `json:"VoiceURLs"`
 	} `json:"MobileResult"`
 }
 
@@ -35,6 +36,19 @@ type SearchRequest struct {
 	Term string `json:"Term"`
 	Code string `json:"Code"`
 }
+
+type VoiceItem struct {
+	Country    string
+	AccentName string
+	VoiceUrl   string
+}
+
+type VoiceResponse []VoiceItem
+
+var (
+	countryCodes = []string{"us", "uk", "au"}
+	accentNames  = []string{"American Accent", "British Accent", "Australian Accent"}
+)
 
 func Search(word string) (*SearchResponse, error) {
 	code := md5.Sum([]byte(fmt.Sprintf("%s%s", word, SECRET)))
@@ -88,6 +102,50 @@ func AutoComplete(term string) (*AutoCompleteResponse, error) {
 	}
 
 	return &AutoCompleteResponse{Words: words}, nil
+}
+
+func Voice(word string) (VoiceResponse, error) {
+	code := md5.Sum([]byte(fmt.Sprintf("%s%s", word, SECRET)))
+	req := SearchRequest{word, hex.EncodeToString(code[:])}
+
+	requestJson, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	request, err := http.NewRequest("POST", SEARCH_URL, bytes.NewBuffer(requestJson))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("User-Agent", USER_AGENT)
+	request.Header.Set("Content-Type", BODY_TYPE)
+
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	response := &SearchResponse{}
+
+	err = json.Unmarshal(body, response)
+	if err != nil {
+		return nil, err
+	}
+
+	voices := VoiceResponse{}
+
+	for i, voiceUrl := range response.Result.VoiceURLs {
+		voice := VoiceItem{
+			VoiceUrl:   voiceUrl,
+			Country:    countryCodes[i],
+			AccentName: accentNames[i],
+		}
+		voices = append(voices, voice)
+	}
+
+	return voices, nil
 }
 
 const (
